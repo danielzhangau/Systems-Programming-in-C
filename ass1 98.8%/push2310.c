@@ -1,0 +1,1050 @@
+/** 
+* \file push2310.c
+* \author Bosheng ZHANG
+*/
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <math.h>
+#include <ctype.h>
+#include <limits.h>
+#include <stdbool.h>
+
+#define BLANK_CHAR '.'
+#define VALID_DIM_LOW 3
+#define INITIAL_BUFFER 200
+
+/* An enum
+** Define exit status 
+*/
+typedef enum {
+    NORMAL_GAME_OVER = 0,
+    INCORRECT_NUMBER = 1,
+    WRONG_ARG_TYPE = 2,
+    READ_FAIL = 3,
+    SAVEFILE_FAIL = 4,
+    END_OF_INPUT = 5,
+    BOARD_FULL = 6,
+} Status;
+
+/* Output error message for status and return status
+**	- Returns nothing
+**	- Prints exit status messages out to stderr(Standard error) 
+*/
+Status exit_message(Status s) {
+    const char *messages[] = {"",                  //0
+            "Usage: push2310 typeO typeX fname\n", //1
+            "Invalid player type\n",               //2
+            "No file to load from\n",              //3
+            "Invalid file contents\n",             //4
+            "End of file\n",                       //5
+            "Full board in load\n"};               //6
+    fputs(messages[s], stderr);
+    return s;
+}
+
+/* a struct cell
+** contains two values: number and place to input
+*/
+typedef struct {
+    int number;
+    char place;
+} Cell;
+
+/* a struct board
+** contains three values: board width, height and grid
+*/
+typedef struct {
+    unsigned int height, width;
+    Cell **grid;
+} Board;
+
+/* a struct game
+** contains five values: 
+** - board content of the game 
+** - player types
+** - current player type
+** - boardname
+** - is it a empty board boolean variable
+*/
+typedef struct {
+    Board board;
+    char types[2];
+    char current; // will be O or X
+    char *boardname;
+    bool emptyBoard;
+} Game;
+
+/* Check if a board dimension is in bounds 
+** param: height or width of the board
+** return true if valid
+*/
+bool valid_dim(unsigned d) {
+    return (d >= VALID_DIM_LOW);
+}
+
+/* Allocate memory for board and set all positions to blank
+** param: board and its height and width
+*/
+void init_board(Board *board, unsigned int height, unsigned int width) {
+    board->height = height;
+    board->width = width;
+    board->grid = malloc(sizeof(Cell *) * height);
+    for (unsigned i = 0; i < height; ++i) {
+        board->grid[i] = malloc(sizeof(Cell) * width);
+        for (unsigned j = 0; j < width; ++j) {
+            board->grid[i][j].number = '0';
+            board->grid[i][j].place = BLANK_CHAR;
+        }
+    }
+    board->grid[0][0].number = ' ';        // corner 
+    board->grid[0][width - 1].number = ' ';  // corner 
+    board->grid[height - 1][0].number = ' ';  // ...
+    board->grid[height - 1][width - 1].number = ' ';
+    board->grid[0][0].place = ' ';
+    board->grid[0][width - 1].place = ' ';
+    board->grid[height - 1][0].place = ' ';
+    board->grid[height - 1][width - 1].place = ' ';
+}
+
+/* check if input is a valid player type
+** param: input type
+** return true if valid
+*/
+bool valid_type(char c) {
+    return (c == '0') || (c == '1') || (c == 'H');
+}
+
+/* check if number is in range and cell content is valid
+** param: an cell's content
+** return true if valid
+*/
+bool valid_cell(int c1, char c2) {
+    return (((c1 >= '1') && (c1 <= '9')) &&
+            ((c2 == 'O') || (c2 == 'X') || (c2 == BLANK_CHAR)));
+}
+
+/* check if the corner content is correct
+** param: an cell's content
+** return true if valid
+*/
+bool is_corner_content(int c1, char c2) {
+    return ((c1 == ' ') && (c2 == ' '));
+}
+
+/* check if the grid[][] is in the corner
+** param: - the board height and width
+**        - the cell's row and column
+** return true if valid
+*/
+bool is_corner(unsigned height, unsigned width, unsigned row, unsigned col) {
+    return (((row == 0) && (col == 0)) ||
+            ((row == height - 1) && (col == 0)) ||
+            ((row == 0) && (col == width - 1)) ||
+            ((row == height - 1) && (col == width - 1)));
+}
+
+/* check if the border content is correct
+** param: an cell's content
+** return true if valid
+*/
+bool is_side_content(int c1, char c2) {
+    return ((c1 == '0') && ((c2 == 'O') || (c2 == 'X') || (c2 == BLANK_CHAR)));
+}
+
+/* check if the grid[][] is in the corner
+** param: - the board height and width
+**        - the cell's row and column
+** return true if valid
+*/
+bool is_side(unsigned height, unsigned width, unsigned row, unsigned col) {
+    return (((row == 0) && (col > 0) && (col < width - 1)) ||          //top
+            ((row == height - 1) && (col > 0) && (col < width - 1)) || //bottom
+            ((col == 0) && (row > 0) && (row < height - 1)) ||         //left
+            ((col == width - 1) && (row > 0) && (row < height - 1)));  //right
+}
+
+/* Init a board and pass the values inside from input
+** param: - input file
+**        - the dimensions of the board
+** return true on success
+*/
+bool read_board(Board *board, FILE *input, unsigned height, unsigned width) {
+    init_board(board, height, width);
+    for (unsigned row = 0; row < height; ++row) {
+        for (unsigned col = 0; col < width; ++col) {
+            int c1 = fgetc(input);
+            int c2 = fgetc(input);
+            if (c1 == EOF || c2 == EOF) {
+                return false;
+            }
+            if ((is_corner_content(c1, c2)) 
+                && (is_corner(height, width, row, col))) {
+                continue;       // do not need change
+            } else if ((is_side_content(c1, c2)) 
+                && (is_side(height, width, row, col))) {
+                continue;       // do not need change
+            } else if (valid_cell(c1, c2)) {
+                board->grid[row][col].number = c1;
+                board->grid[row][col].place = c2;
+            } else {
+                return false;
+            }
+        }
+        if (row < height - 1) {    // check for trailing chars ('\n')
+            char c = fgetc(input); // at end of each row
+            if (c != '\n') {       // skip by get it (except l line)
+                return false;
+            }
+        }
+    }
+    return true;
+}
+
+/* Check if board is empty
+** param: - the given board
+** return true on success
+*/
+bool board_empty(Board *b)
+{
+    for (unsigned int row = 1; row < b->height - 1; ++row) {
+        for (unsigned int col = 1; col < b->width - 1; ++col) {
+            if (b->grid[row][col].place != BLANK_CHAR) {
+                return false;
+            }
+        }
+    }
+    return true;
+}
+
+/* Check if board is full
+** param: - the given board
+** return true on success
+*/
+bool board_full(Board *b)
+{
+    for (unsigned int row = 1; row < b->height - 1; ++row) {
+        for (unsigned int col = 1; col < b->width - 1; ++col) {
+            if (b->grid[row][col].place == BLANK_CHAR) {
+                return false;
+            }
+        }
+    }
+    return true;
+}
+
+/* initialize the game structure by loading the fname from input
+** param: - input file and current game
+** return NORMAL_GAME_OVER if success or error message otherwise
+*/
+Status load_saved(const char *fname, Game *game) {
+    char buffer[INITIAL_BUFFER];
+    FILE *input = fopen(fname, "r"); // input: file pointer
+    if (!input) {           // not open 
+        return READ_FAIL; 
+    }
+    if (!fgets(buffer, INITIAL_BUFFER, input)) { // read first line
+        fclose(input);
+        return SAVEFILE_FAIL;
+    }
+    unsigned int height, width;
+    char next;
+    if ((sscanf(buffer, "%u %u", &height, &width) != 2) || 
+            (!fgets(buffer, INITIAL_BUFFER, input)) ||
+            !valid_dim(height) || !valid_dim(width)) {
+        fclose(input);
+        return SAVEFILE_FAIL;           //check for input dimension
+    }
+    if ((sscanf(buffer, "%c", &next) != 1) ||     
+            ((next != 'O' && next != 'X'))) {
+        fclose(input);
+        return SAVEFILE_FAIL;      // check for next player
+    }
+    buffer[strlen(buffer) - 1] = '\0';         // fgets reads and adds '\n' 
+             //in the string, replace '\n' by '\0' to remove the line break 
+    if (!read_board(&game->board, input, height, width)) {
+        fclose(input);
+        return SAVEFILE_FAIL;
+    }
+    if (board_full(&game->board)) {           // load a full board
+        return BOARD_FULL;
+    }
+    game->emptyBoard = board_empty(&game->board);
+    game->current = next == 'O' ? 'O' : 'X';
+    fclose(input);
+    return NORMAL_GAME_OVER;
+}
+
+/* Send board to specified FILE*
+** param: - input file and game board
+*/
+void print_grid(FILE *output, Board *board)
+{
+    for (unsigned row = 0; row < board->height; ++row) {
+        for (unsigned col = 0; col < board->width; ++col) {
+            if (board->grid[row][col].number == ' ') {    // corner
+                fputc(' ', output);
+                fputc(' ', output);
+            } else {
+                fputc(board->grid[row][col].number, output);
+                fputc(board->grid[row][col].place, output);
+            }
+        }
+        fputc('\n', output);
+    }
+}
+
+/* check if the specified cell within the bounds of the board
+** param: - game board
+**        - row and column to check
+** return true if valid
+*/
+bool in_range(Board *board, unsigned short row, unsigned short col)
+{
+    return ((row < board->height) && (col < board->width));
+}
+
+/* check if the particular cell empty
+** param: - game board
+**        - row and column to check
+** return true if valid
+*/
+bool is_empty(Board *board, unsigned short row, unsigned short col)
+{
+    return (board->grid[row][col].place == BLANK_CHAR);
+}
+
+/* check if there is an empty place in the given column 
+** (except the given one[r][c]) only work for sides
+** param: - game board
+**        - row and column to check
+** return true if valid
+*/
+bool empty_in_col(Board *board, unsigned short r, unsigned short c)
+{
+    if (r == 0) {
+        for (unsigned short row = 1; row < board->height; row++) {
+            if (!is_empty(board, row, c)) {
+                continue;
+            }
+            return true;
+        }
+    }
+    if (r == board->height - 1) {
+        for (short row = board->height - 2; row >= 0; row--) {
+            if (!is_empty(board, row, c)) {
+                continue;
+            }
+            return true;
+        }
+    }
+    return false;
+}
+
+/* check if there is an empty place in the given row
+** (except the given one[r][c]) only work for sides
+** param: - game board
+**        - row and column to check
+** return true if valid
+*/
+bool empty_in_row(Board *board, unsigned short r, unsigned short c)
+{
+    if (c == 0) {
+        for (unsigned short col = 1; col < board->width; col++) {
+            if (!is_empty(board, r, col)) {
+                continue;
+            }
+            return true;
+        }
+    }
+    if (c == board->width - 1) {
+        for (short col = board->width - 2; col >= 0; col--) {
+            if (!is_empty(board, r, col)) {
+                continue;
+            }
+            return true;
+        }
+    }
+    return false;
+}
+
+/* Save game state to file named fname
+** param: - game board and file name
+*/
+void save_game(Game *game, const char *fname)
+{
+    const char *message = "Save failed\n";
+    if (fname[0] == '\0') {
+        return;
+    }
+    FILE *out = fopen(fname, "w");
+    if (out) {               // means fopen success
+        fprintf(out, "%u %u\n", game->board.height, game->board.width);
+        fprintf(out, "%c\n", game->current);
+        print_grid(out, &game->board);
+        fclose(out);
+    } else {
+        fputs(message, stderr);
+    }
+}
+
+/* find the first empty place in a column from top row
+** param: - game board 
+**        - given row and column
+** return the empty cell's row
+*/
+unsigned short first_empty_top(Board *board, 
+        unsigned short row, unsigned short col) {
+    unsigned short r;
+    for (r = row; r < board->height; r++) {
+        if (is_empty(board, r, col)) {
+            break;
+        }
+    }
+    return r;
+}
+
+/* find the first empty place in a column from bottom row
+** param: - game board 
+**        - given row and column
+** return the empty cell's row
+*/
+unsigned short first_empty_bottom(Board *board, 
+        unsigned short row, unsigned short col) {
+    short r;
+    for (r = row; r >= 0; r--) {
+        if (is_empty(board, r, col)) {
+            break;
+        }
+    }
+    return r;
+}
+
+/* find the first empty place in a row from left column
+** param: - game board 
+**        - given row and column
+** return the empty cell's column
+*/
+unsigned short first_empty_left(Board *board, 
+        unsigned short row, unsigned short col) {
+    unsigned short c;
+    for (c = col; c < board->width; c++) {
+        if (is_empty(board, row, c)) {
+            break;
+        }
+    }
+    return c;
+}
+
+/* find the first empty place in a column from right row
+** param: - game board 
+**        - given row and column
+** return the empty cell's column
+*/
+unsigned short first_empty_right(Board *board, 
+        unsigned short row, unsigned short col) {
+    short c;
+    for (c = col; c >= 0; c--) {
+        if (is_empty(board, row, c)) {
+            break;
+        }
+    }
+    return c;
+}
+
+/* place current player char into input [row][column]
+** param: - game board 
+**        - given row and column
+*/
+void play_stone(Game *g, unsigned short row, unsigned short col) {
+    if (!in_range(&g->board, row, col)) {
+        return;
+    }
+    g->board.grid[row][col].place = g->current;   // put in grid first
+    unsigned rowEnd, colEnd;
+
+    // below four ifs are different conditions on edges
+    if ((row == 0) && (col > 0) && (col < g->board.width - 1)) {  //top
+        rowEnd = first_empty_top(&g->board, row, col);
+        for (unsigned short r = rowEnd; r > 0; r--) {
+            g->board.grid[r][col].place = g->board.grid[r - 1][col].place;
+        }   // copy the one above it to it's place, start from empty cell
+        g->board.grid[row][col].place = BLANK_CHAR;    
+    }       // after copy all cells, initial the place where we place
+    if ((row == g->board.height - 1) && (col > 0) 
+            && (col < g->board.width - 1)) {                      //bottom
+        rowEnd = first_empty_bottom(&g->board, row, col);
+        for (unsigned short r = rowEnd; r < g->board.height - 1; r++) {
+            g->board.grid[r][col].place = g->board.grid[r + 1][col].place;
+        }       
+        g->board.grid[row][col].place = BLANK_CHAR;
+    }          // same as above, but copy the one under it
+    if ((col == 0) && (row > 0) && (row < g->board.height - 1)) { //left
+        colEnd = first_empty_left(&g->board, row, col);
+        for (unsigned short c = colEnd; c > 0; c--) {
+            g->board.grid[row][c].place = g->board.grid[row][c - 1].place;
+        }
+        g->board.grid[row][col].place = BLANK_CHAR;
+    }
+    if ((col == g->board.width - 1) && (row > 0) 
+            && (row < g->board.height - 1)) {                     //right
+        colEnd = first_empty_right(&g->board, row, col);
+        for (unsigned short c = colEnd; c < g->board.width - 1; c++) {
+            g->board.grid[row][c].place = g->board.grid[row][c + 1].place;
+        }
+        g->board.grid[row][col].place = BLANK_CHAR;
+    }
+}
+
+/* check if the cell have neighbour under it //for top
+** param: - game board 
+**        - given row and column
+** return true if yes
+*/
+bool has_down_neighbour(Board *board, unsigned short row, 
+        unsigned short column) {
+    if (!in_range(board, row, column)) {
+        return false;
+    }
+    unsigned short height = board->height;
+    if (!is_empty(board, (row + 1) % height, column)) { // South
+        return true;
+    }
+    return false;
+}
+
+/* check if the cell have neighbour up it  //for bottom
+** param: - game board 
+**        - given row and column
+** return true if yes
+*/
+bool has_up_neighbour(Board *board, unsigned short row, 
+        unsigned short column) {
+    if (!in_range(board, row, column)) {
+        return false;
+    }
+    unsigned short height = board->height;
+    if (!is_empty(board, (row + height - 1) % height, column)) { // North
+        return true;
+    }
+    return false;
+}
+
+/* check if the cell have neighbour on right side  //for left
+** param: - game board 
+**        - given row and column
+** return true if yes
+*/
+bool has_right_neighbour(Board *board, unsigned short row, 
+        unsigned short column) {
+    if (!in_range(board, row, column)) {
+        return false;
+    }
+    unsigned short width = board->width;
+    if (!is_empty(board, row, (column + 1) % width)) { // East
+        return true;
+    }
+    return false;
+}
+
+/* check if the cell have neighbour on left side  //for right
+** param: - game board 
+**        - given row and column
+** return true if yes
+*/
+bool has_left_neighbour(Board *board, unsigned short row, 
+        unsigned short column) {
+    if (!in_range(board, row, column)) {
+        return false;
+    }
+    unsigned short width = board->width;
+    if (!is_empty(board, row, (column + width - 1) % width)) { // West
+        return true;
+    }
+    return false;
+}
+
+/* sub_function for human_move
+** detect the if it is the end of input
+** param: - current game and temporary storage area buffer
+** Return 0 status if not end of input
+*/
+Status human_move_eof (Game *game, char buffer[80]) {
+    printf("%c:(R C)> ", game->current);
+    if (!fgets(buffer, 80, stdin)) {
+        return END_OF_INPUT;
+    } else if (buffer[strlen(buffer) - 1] != '\n') { // long line
+        int first;
+        while (first = fgetc(stdin), first != '\n') {
+            if (first == EOF) {     // means no input 
+                return END_OF_INPUT;  // EOF（End Of File）
+            }
+        }         
+    }
+    return NORMAL_GAME_OVER;
+}
+
+/* Prompt and read user input row and column then play that Cell
+** reprompt whether save file fail or not
+** param: - current game
+** Return 0 status if success, other status otherwise
+*/
+Status human_move(Game *g) {
+    char buffer[80], l;     // No valid move input will contain > 80 char
+    while (true) {             // temporary storage area    // l as last  
+        Status status = human_move_eof(g, buffer); 
+        if (status == END_OF_INPUT) {
+            return status; // use subfunction to detect END_OF_INPUT
+        } 
+        unsigned short width = g->board.width, c, height = g->board.height, r;
+        Board b = g->board;
+        if (!strncmp("s", buffer, 1)) {
+            if (buffer[strlen(buffer) - 1] == '\n') {
+                buffer[strlen(buffer) - 1] = '\0';
+                save_game(g, buffer + 1);
+                continue; // jumps to start of while loop   
+            }
+            save_game(g, buffer + 1);
+        } else if (sscanf(buffer, "%hu %hu%c", &r, &c, &l) == 3 && l == '\n') {
+            if (!in_range(&b, r, c) || !is_empty(&b, r, c)) {
+                continue;                     // here we expect l to be '\n'
+            }
+            if ((r == 0) && (c > 0) && (c < width - 1)) {        
+                if (has_down_neighbour(&b, r, c) && empty_in_col(&b, r, c)) {
+                    play_stone(g, r, c);
+                    break;
+                }         // see if we can pushed into the interior from top
+                continue;     
+            } else if ((r == height - 1) && (c > 0) && (c < width - 1)) { 
+                if (has_up_neighbour(&b, r, c) && empty_in_col(&b, r, c)) {
+                    play_stone(g, r, c);                       
+                    break;
+                }                                             //from bottom
+                continue;
+            } else if ((c == 0) && (r > 0) && (r < height - 1)) { //left 
+                if (has_right_neighbour(&b, r, c) && empty_in_row(&b, r, c)) {
+                    play_stone(g, r, c);
+                    break;
+                }
+                continue;
+            } else if ((c == width - 1) && (r > 0) && (r < height - 1)) { 
+                if (has_left_neighbour(&b, r, c) && empty_in_row(&b, r, c)) {
+                    play_stone(g, r, c);                         //right
+                    break;
+                }
+                continue;
+            }
+            play_stone(g, r, c);
+            break;
+        }
+    }
+    return NORMAL_GAME_OVER;
+}
+
+/* Get a move from an automated player type 0 and add it to the board
+** param: - current game
+*/
+void auto0_move(Game *game)
+{
+    if (game->current == 'O') {                 // player1
+        for (unsigned short r = 1; r < game->board.height - 1; ++r) {
+            for (unsigned short c = 1; c < game->board.width - 1; ++c) {
+                if (is_empty(&game->board, r, c)) {
+                    printf("Player %c placed at %hu %hu\n",
+                            game->current, r, c);
+                    play_stone(game, r, c);
+                    return;
+                }
+            }
+        }
+    } else {
+        for (unsigned short r = game->board.height - 2; r > 0; --r) {
+            for (unsigned short c = game->board.width - 2; c > 0; --c) {
+                if (is_empty(&game->board, r, c)) {
+                    printf("Player %c placed at %hu %hu\n",
+                            game->current, r, c);
+                    play_stone(game, r, c);
+                    return;
+                }
+            }
+        }
+    }
+}
+
+/* calculate the score for the given column
+** param: - game board and given column
+**        - current player
+** return next player's score
+*/
+unsigned cal_scores_col(Board *board, unsigned short col, char current)
+{
+    unsigned playerOScore = 0;
+    unsigned playerXScore = 0;
+    for (unsigned short r = 0; r < board->height; ++r) {
+        if (!is_empty(board, r, col)) {
+            if (board->grid[r][col].place == 'O') {
+                playerOScore = playerOScore + board->grid[r][col].number;
+            }
+            if (board->grid[r][col].place == 'X') {
+                playerXScore = playerXScore + board->grid[r][col].number;
+            }
+        }
+    }
+    if (current == 'O') {             
+        return playerXScore;          // return next player's score
+    } else {
+        return playerOScore;
+    }
+}
+
+/* calculate the score for the given row 
+** param: - game board and given column
+**        - current player
+** return next player's score
+*/
+unsigned cal_scores_row(Board *board, unsigned short row, char current)
+{
+    unsigned playerOScore = 0;
+    unsigned playerXScore = 0;
+    for (unsigned short c = 0; c < board->width; ++c) {
+        if (!is_empty(board, row, c)) {
+            if (board->grid[row][c].place == 'O') {
+                playerOScore = playerOScore + board->grid[row][c].number;
+            }
+            if (board->grid[row][c].place == 'X') {
+                playerXScore = playerXScore + board->grid[row][c].number;
+            }
+        }
+    }
+    if (current == 'O') {
+        return playerXScore;
+    } else {
+        return playerOScore;
+    }
+}
+
+/* compare the score before and after auto player 1 place on the top border
+** param: - current game
+**        - given column and row
+** return true if the score is higher, false otherwise
+*/
+bool compare_score_top(Game *g, unsigned short row, unsigned short col)
+{ // clockwice top
+    unsigned rowEnd;
+    unsigned current_score = cal_scores_col(&g->board, col, g->current);
+    if (has_down_neighbour(&g->board, row, col) 
+            && empty_in_col(&g->board, row, col)) {
+        g->board.grid[row][col].place = g->current;
+        rowEnd = first_empty_top(&g->board, row, col);
+        for (unsigned short r = rowEnd; r > 0; r--) {
+            g->board.grid[r][col].place = g->board.grid[r - 1][col].place;
+        }                    // move cell to get new score
+        g->board.grid[row][col].place = BLANK_CHAR;
+        unsigned new_score = cal_scores_col(&g->board, col, g->current);
+        if (new_score >= current_score) {
+            for (unsigned short r = 0; r < rowEnd; r++) {
+                g->board.grid[r][col].place = g->board.grid[r + 1][col].place;
+            }
+            g->board.grid[rowEnd][col].place = BLANK_CHAR;
+            g->board.grid[row][col].place = BLANK_CHAR;
+            return false;    // whether true or false move the cells back
+        } else {             // we will move the cells in auto1_move function
+            for (unsigned short r = 0; r < rowEnd; r++) {
+                g->board.grid[r][col].place = g->board.grid[r + 1][col].place;
+            }
+            g->board.grid[rowEnd][col].place = BLANK_CHAR;
+            g->board.grid[row][col].place = BLANK_CHAR;
+            return true;
+        }
+    }
+    return false;
+}
+
+/* compare the score before and after auto player 1 place on the right border
+** param: - current game
+**        - given column and row
+** return true if the score is higher, false otherwise
+*/
+bool compare_score_right(Game *g, unsigned short row, unsigned short col)
+{ // right
+    unsigned colEnd;
+    unsigned current_score = cal_scores_row(&g->board, row, g->current);
+    if (has_left_neighbour(&g->board, row, col) 
+            && empty_in_row(&g->board, row, col)) {
+        g->board.grid[row][col].place = g->current;
+        colEnd = first_empty_right(&g->board, row, col);
+        for (unsigned short c = colEnd; c < g->board.width - 1; c++) {
+            g->board.grid[row][c].place = g->board.grid[row][c + 1].place;
+        }
+        g->board.grid[row][col].place = BLANK_CHAR;
+        unsigned new_score = cal_scores_row(&g->board, row, g->current);
+        if (new_score >= current_score) {
+            for (unsigned short c = g->board.width - 1; c > colEnd; c--) {
+                g->board.grid[row][c].place = g->board.grid[row][c - 1].place;
+            }
+            g->board.grid[row][colEnd].place = BLANK_CHAR;
+            g->board.grid[row][col].place = BLANK_CHAR;
+            return false;       // also apply here
+        } else {
+            for (unsigned short c = g->board.width - 1; c > colEnd; c--) {
+                g->board.grid[row][c].place = g->board.grid[row][c - 1].place;
+            }
+            g->board.grid[row][colEnd].place = BLANK_CHAR;
+            g->board.grid[row][col].place = BLANK_CHAR;
+            return true;
+        }
+    }
+    return false;
+}
+
+/* compare the score before and after auto player 1 place on the bottom border
+** param: - current game
+**        - given column and row
+** return true if the score is higher, false otherwise
+*/
+bool compare_score_bottom(Game *g, unsigned short row, unsigned short col)
+{ // bottom
+    unsigned rowEnd;
+    unsigned current_score = cal_scores_col(&g->board, col, g->current);
+    if (has_up_neighbour(&g->board, row, col) 
+            && empty_in_col(&g->board, row, col)) {
+        g->board.grid[row][col].place = g->current;
+        rowEnd = first_empty_bottom(&g->board, row, col);
+        for (unsigned short r = rowEnd; r < g->board.height - 1; r++) {
+            g->board.grid[r][col].place = g->board.grid[r + 1][col].place;
+        }
+        g->board.grid[row][col].place = BLANK_CHAR;
+        unsigned new_score = cal_scores_col(&g->board, col, g->current);
+        if (new_score >= current_score) {
+            for (unsigned short r = g->board.height - 1; r > rowEnd; r--) {
+                g->board.grid[r][col].place = g->board.grid[r - 1][col].place;
+            }
+            g->board.grid[rowEnd][col].place = BLANK_CHAR;
+            g->board.grid[row][col].place = BLANK_CHAR;
+            return false;
+        } else {
+            for (unsigned short r = g->board.height - 1; r > rowEnd; r--) {
+                g->board.grid[r][col].place = g->board.grid[r - 1][col].place;
+            }
+            g->board.grid[rowEnd][col].place = BLANK_CHAR;
+            g->board.grid[row][col].place = BLANK_CHAR;
+            return true;
+        }
+    }
+    return false;
+}
+
+/* compare the score before and after auto player 1 place on the left border
+** param: - current game
+**        - given column and row
+** return true if the score is higher, false otherwise
+*/
+bool compare_score_left(Game *g, unsigned short row, unsigned short col)
+{ // left
+    unsigned colEnd;
+    unsigned current_score = cal_scores_row(&g->board, row, g->current);
+    if (has_right_neighbour(&g->board, row, col) 
+            && empty_in_row(&g->board, row, col)) {
+        g->board.grid[row][col].place = g->current;
+        colEnd = first_empty_left(&g->board, row, col);
+        for (unsigned short c = colEnd; c > 0; c--) {
+            g->board.grid[row][c].place = g->board.grid[row][c - 1].place;
+        }
+        g->board.grid[row][col].place = BLANK_CHAR;
+        unsigned new_score = cal_scores_row(&g->board, row, g->current);
+        if (new_score >= current_score) {
+            for (unsigned short c = 0; c < colEnd; c++) {
+                g->board.grid[row][c].place = g->board.grid[row][c + 1].place;
+            }
+            g->board.grid[row][colEnd].place = BLANK_CHAR;
+            g->board.grid[row][col].place = BLANK_CHAR;
+            return false;
+        } else {
+            for (unsigned short c = 0; c < colEnd; c++) {
+                g->board.grid[row][c].place = g->board.grid[row][c + 1].place;
+            }
+            g->board.grid[row][colEnd].place = BLANK_CHAR;
+            g->board.grid[row][col].place = BLANK_CHAR;
+            return true;
+        }
+    }
+    return false;
+}
+
+/* get the cell with highest number inside 
+** param: - current game, pointer of highest row and highest column
+*/
+void find_highest_number(Game *game, unsigned short *highestRow, 
+        unsigned short *highestCol) {
+    unsigned short height = game->board.height;
+    unsigned short width = game->board.width;
+    unsigned short highestNumber = 0;
+    for (unsigned short r = 0; r < height; ++r) {
+        for (unsigned short c = 0; c < width; ++c) {
+            if ((!is_corner(height, width, r, c)) 
+                    && (is_empty(&game->board, r, c)) 
+                    && (game->board.grid[r][c].number > highestNumber)) {
+                highestNumber = game->board.grid[r][c].number;
+                *highestRow = r;   // highest number's row
+                *highestCol = c;   // highest number's column
+            }
+        }
+    }
+}
+
+/* Get a move from an automated player type 1 and add it to the board
+** param: - current game
+*/
+void auto1_move(Game *g)
+{
+    unsigned short h = g->board.height, highestRow;
+    unsigned short w = g->board.width, highestCol;
+    for (unsigned short c = 1; c < w - 1; ++c) {    
+        unsigned short r = 0;
+        if ((!is_corner(h, w, r, c)) && (is_empty(&g->board, r, c)) 
+                && compare_score_top(g, r, c)) {
+            printf("Player %c placed at %hu %hu\n", g->current, r, c);
+            play_stone(g, r, c);
+            return;
+        }
+    }     // first check if there is a choice to lower score from top border
+    for (unsigned short r = 1; r < h - 1; ++r) {
+        unsigned short c = w - 1;
+        if ((!is_corner(h, w, r, c)) && (is_empty(&g->board, r, c)) 
+                && compare_score_right(g, r, c)) {
+            printf("Player %c placed at %hu %hu\n", g->current, r, c);
+            play_stone(g, r, c);
+            return;
+        }
+    }     // check if there is a choice to lower score from right border
+    for (unsigned short c = w - 2; c > 0; --c) {
+        unsigned short r = h - 1;
+        if ((!is_corner(h, w, r, c)) && (is_empty(&g->board, r, c)) 
+                && compare_score_bottom(g, r, c)) {
+            printf("Player %c placed at %hu %hu\n", g->current, r, c);
+            play_stone(g, r, c);
+            return;
+        }
+    }     // check if there is a choice to lower score from bottom border
+    for (unsigned short r = h - 2; r > 0; --r) {
+        unsigned short c = 0;
+        if ((!is_corner(h, w, r, c)) && (is_empty(&g->board, r, c)) 
+                && compare_score_left(g, r, c)) {
+            printf("Player %c placed at %hu %hu\n", g->current, r, c);
+            play_stone(g, r, c);
+            return;
+        } 
+    }     // check if there is a choice to lower score from left border
+    // if not above, then find cell with largest number to place
+    find_highest_number(g, &highestRow, &highestCol);  // call by address
+    printf("Player %c placed at %hu %hu\n", 
+            g->current, highestRow, highestCol);
+    play_stone(g, highestRow, highestCol);
+    return;
+}
+
+/* Calculate scores for both players and output winners
+** param: - current board
+*/
+void cal_scores(Board *board)
+{
+    unsigned playerOScore = 0;
+    unsigned playerXScore = 0;
+    for (unsigned short r = 0; r < board->height; ++r) {
+        for (unsigned short c = 0; c < board->width; ++c) {
+            if (!is_empty(board, r, c)) {
+                if (board->grid[r][c].place == 'O') {
+                    playerOScore = playerOScore + board->grid[r][c].number;
+                }
+                if (board->grid[r][c].place == 'X') {
+                    playerXScore = playerXScore + board->grid[r][c].number;
+                }
+            }
+        }
+    }
+    if (playerOScore > playerXScore) {
+        printf("Winners: %c\n", 'O');
+    } else if (playerOScore < playerXScore) {
+        printf("Winners: %c\n", 'X');
+    } else {
+        printf("Winners: %c %c\n", 'O', 'X');
+    }
+}
+
+/* run base on the player's type
+** param: - current board
+** return 0 when board is full or error message during human move
+*/
+Status run_game(Game *game)
+{
+    print_grid(stdout, &game->board);
+    while (true) {
+        char current = game->current, type;
+        if (current == 'O') {
+            type = game->types[0];
+        } else {
+            type = game->types[1];
+        }
+        if (type == 'H') {
+            Status status = human_move(game);
+            if (status != NORMAL_GAME_OVER) {
+                return status;
+            }
+            print_grid(stdout, &game->board);
+        } else if (type == '0') {
+            auto0_move(game);
+            print_grid(stdout, &game->board);
+        } else if (type == '1') {
+            auto1_move(game);
+            print_grid(stdout, &game->board);
+        }
+        game->emptyBoard = false;
+        game->current = game->current == 'O' ? 'X' : 'O';
+        if (board_full(&game->board)) {
+            break; // should be cal_scores here
+        }
+    }
+    cal_scores(&game->board);
+    return NORMAL_GAME_OVER;
+}
+
+/* load the state of the game from a file
+** param: - inputs(players type and file to load) e.g 0 0 board1
+** return NORMAL_GAME_OVER on success, other status otherwise
+*/
+Status load_game(char **argv)
+{
+    char playerType[2];
+    Game game;
+    for (int i = 0; i < 2; ++i) {
+        if (!strcmp(argv[1 + i], "0")) { 
+            // strcmp() returns 0 if both strings are identical.
+            playerType[i] = '0';
+        } else if (!strcmp(argv[1 + i], "1")) {
+            playerType[i] = '1';
+        } else if (!strcmp(argv[1 + i], "H")) {
+            playerType[i] = 'H';
+        } else {
+            return exit_message(WRONG_ARG_TYPE);
+        }
+    }
+    game.boardname = malloc(sizeof(char) * (strlen(argv[3] + 1)));
+    strcpy(game.boardname, argv[3]);
+    Status status = load_saved(argv[3], &game);
+    if (status != NORMAL_GAME_OVER) {
+        return exit_message(status);
+    }
+    game.types[0] = playerType[0];
+    game.types[1] = playerType[1];
+    return exit_message(run_game(&game));
+}
+
+int main(int argc, char **argv)
+{
+    if (argc == 4) {
+        return load_game(argv);
+    } else {
+        return exit_message(INCORRECT_NUMBER);
+    }
+}
