@@ -56,3 +56,54 @@ Once the player has checked its commandline arguments, it should:
 2. Read the path from stdin (in the same format as the path file).
 
 ![A3demo](https://github.com/danielzhangau/CSSE2310-C/blob/master/a3demo.png)
+
+## Assignment4: a simple networked simulation of plane flights
+A complete assignment will consist of three C99 programs:
+• roc2310: Simulates an aircraft
+• control2310: Simulates an airport
+• mapper2310: Maps airport names to ports
+Multiple instances of these programs will be executed to carry out the simulation.
+You will use pthreads and communicate via IPv4 TCP networking. Your implementation must use blocking communications. You are not permitted to use pipes or any alternative means of interprocess commmunication. To complete all of the features of this assignment you will need to use pthreads, you are not to call fork() nor attempt to use any form of nonblocking I/O or I/O multiplexing.
+### mapper2310
+This program takes no commandline parameters. When it starts up, it will
+1. listen on an ephemeral port,
+2. print that port to stdout.
+3. act on any commands it receives via connection to the port (the other end of the connection will close it when it has no more commands).
+
+![A4demo](https://github.com/danielzhangau/CSSE2310-C/blob/master/a4mapperdemo.png)
+
+### control2310
+This program takes the following parameters:
+• AirportID
+• Airport info
+• mapper port (This is optional).
+When the program starts up, it will:
+1. Listen on an ephemeral port.
+2. Print that port to stdout.
+3. If a mapper port is given, connect to the mapper and register the ID and port of this airport. It should then disconnect from the mapper.
+4. In parallel — wait for connections by planes and act on them.
+When a connection is made to the control’s port, one of two things should happen:
+• If the text sent by the connecting party is “log”, then send back a newline seprated list of all the rocs which have visited them (in lexicographic order). Following this, it should send a full-stop followed by a newline and then close the connection.
+• For any other text, the control should consider the text as the plane’s ID and send back the control’s info (newline terminated).
+### roc2310
+This program takes the following commandline parameters:
+1. planeID
+2. mapper port (This is either a port number or a dash (‘-’)).
+3. zero or more destinations (controls) to connect to in order. These can either be port numbers or control IDs.
+### roc2310 / control2310 communication
+When roc2310 connects to a control, roc will send its ID to control and the control will send back its info.
+  For example:
+$ ./control2310 BNE "Quarantined"
+45643
+$ ./roc2310 F100 - 45643
+  In this case, the roc would send F100 and the control would send Quarantined.
+
+# What I learned: 
+- Compilling c and intial features
+- Processes
+- Virtual memory
+- File descriptor and pipe
+- Threads and synchronization
+- Networks - layers, ogres
+- DNS + HTTP
+- File Systems
