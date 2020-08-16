@@ -1,0 +1,222 @@
+#include <stdlib.h>
+#include <stdbool.h>
+#include <string.h>
+#include "shared.h"
+
+/**
+ * @brief  adds the provided card to the end of the cardList
+ * @param  cardList: the cardList to add the card to
+ * @param  cardIndex: card index to ABCDE
+ * @retval None
+ */
+void list_add_card(CardList* cardList, int cardIndex) {
+    // Create new node
+    CardListNode* newNode = (CardListNode*)malloc(sizeof(CardListNode));
+    char card;
+    if (cardIndex == 1) {
+        card = 'A';
+    } else if (cardIndex == 2) {
+        card = 'B';
+    } else if (cardIndex == 3) {
+        card = 'C';
+    } else if (cardIndex == 4) {
+        card = 'D';
+    } else {
+        card = 'E';
+    }
+    newNode->card = card;
+    newNode->before = NULL;
+    
+    cardList->size += 1;
+    if (cardList->firstNode == NULL) {
+        // Add first card to list
+        newNode->after = NULL;
+        cardList->firstNode = newNode;
+        cardList->lastNode = newNode;
+        return;
+    }
+
+    // Add node to list
+    cardList->lastNode->after = newNode;
+    newNode->before = cardList->lastNode;
+    cardList->lastNode = newNode;
+    return;
+}
+
+/**
+ * @brief  adds the provided site to the end of the pathList
+ * @param  pathList: the pathList to add the site to
+ * @param  newSite: Site with site information
+ * @retval None
+ */
+void path_add_site(PathList* pathList, Site* newSite) {
+    // Create new node
+    PathListNode* newNode = (PathListNode*)malloc(sizeof(PathListNode));
+    newNode->site = newSite;
+    newNode->after = NULL;
+    
+    if (pathList->firstNode == NULL) {
+        // Add first node to list    (::)
+        newNode->after = NULL;
+        pathList->firstNode = newNode;
+        pathList->lastNode = newNode;
+        pathList->size += 1;
+        return;
+    }
+
+    // Add node to list
+    pathList->lastNode->after = newNode;
+    newNode->before = pathList->lastNode;
+    pathList->lastNode = newNode;
+    pathList->size += 1;
+    return;
+}
+
+/**
+ * @brief  adds the provided pid to the end of the playerList
+ * @param  playerList: the playerList to add the id to
+ * @param  pid: player id
+ * @retval None
+ */
+void player_add_id(PlayerList* playerList, int pid) {
+    // Create new node
+    PlayerListNode* newNode = (PlayerListNode*)malloc(sizeof(PlayerListNode));
+    newNode->pid = pid;
+    newNode->after = NULL;
+    
+    playerList->size += 1;
+    if (playerList->firstNode == NULL) {
+        // Add first node to list
+        newNode->before = NULL;
+        newNode->after = NULL;
+        playerList->firstNode = newNode;
+        playerList->lastNode = newNode;
+        return;
+    }
+
+    // Add node to list
+    playerList->lastNode->after = newNode;
+    newNode->before = playerList->lastNode;
+    playerList->lastNode = newNode;
+    return;
+}
+
+/**
+ * @brief  get card from the cardlist--deck
+ * @param  cardList: the playerList to get card
+ * @note  the deck never end
+ * @retval None
+ */
+char deck_get_card(CardList* cardList) {
+    char card;
+    if (cardList->current == NULL) {
+        cardList->current = cardList->firstNode;
+        card = cardList->current->card;
+    }
+
+    // get the card then move forward
+    card = cardList->current->card;
+    cardList->current = cardList->current->after;
+    return card;
+}
+
+/**
+ * @brief  remove the last pid in the player list
+ * @param  playerList: the playerList to remove
+ * @retval None
+ */
+void list_remove_player(PlayerList* playerList) {
+    if (playerList->lastNode == NULL) {
+        // No player in list
+        return;
+    }
+
+    // Remove player at end of list
+    PlayerListNode* oldLastNode = playerList->lastNode;
+    if (oldLastNode->before != NULL) {
+        playerList->lastNode = oldLastNode->before;
+    } else {
+        playerList->lastNode = NULL;
+    }
+    if (playerList->lastNode != NULL) {
+        playerList->lastNode->after = NULL;
+    }
+    oldLastNode = NULL;
+    free(oldLastNode);
+    playerList->size -= 1;
+    
+    if (playerList->lastNode == NULL) {
+        // playerList now empty, remove reference to first node
+        playerList->firstNode = NULL;
+    }
+    return;
+}
+
+/**
+ * @brief  create a card list to hold card
+ * @retval None
+ */
+CardList* list_create() {
+    CardList* newList = (CardList*)malloc(sizeof(CardList));
+    newList->firstNode = NULL;
+    newList->lastNode = NULL;
+    newList->current = NULL; // Special for deck
+    newList->size = 0;
+    return newList;
+}
+
+/**
+ * @brief  create a path list to hold site
+ * @retval None
+ */
+PathList* path_create() {
+    PathList* newList = (PathList*)malloc(sizeof(PathList));
+    newList->firstNode = NULL;
+    newList->lastNode = NULL;
+    newList->size = 0;
+    // newList->path[pathSize][3];
+    return newList;
+}
+
+/**
+ * @brief  create a player list to hold pid
+ * @retval None
+ */
+PlayerList* player_create() {
+    PlayerList* newList = (PlayerList*)malloc(sizeof(PlayerList));
+    newList->firstNode = NULL;
+    newList->lastNode = NULL;
+    newList->size = 0;
+    return newList;
+}
+
+/**
+ * @brief  check if the given card is ABCDE
+ * @param  suite card suite: ABCDE
+ * @retval true if card is valid, otherwise false
+ */
+bool valid_card(char suite) {
+    if (suite != 'A' && suite != 'B' && suite != 'C' 
+            && suite != 'D' && suite != 'E') {
+        return false;
+    }
+    return true;
+}
+
+/**
+ * @brief  check if the given site is known and capacity is 1-9
+ * @param  type card suite: ABCDE
+ * @param  capacity the number of player can hold
+ * @retval true if site is valid, otherwise false
+ */
+bool valid_site(char* type, int capacity) {
+    if (strcmp(type, "Mo") != 0 && strcmp(type, "V1") != 0 && 
+            strcmp(type, "V2") != 0 && strcmp(type, "Do") != 0 && 
+            strcmp(type, "Ri") != 0 && strcmp(type, "::") != 0) {
+        return false;
+    }
+    if (capacity < 1 || capacity > 9) {
+        return false;
+    }
+    return true;
+}
