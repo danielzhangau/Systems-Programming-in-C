@@ -1,0 +1,58 @@
+2310 practice Exam answers for Questions 1--6
+
+1A) ls -lia
+
+1B) chmod g-r dat7
+
+----------------------------
+
+2A) unsigned short foo[7];
+
+2B) char* (*foo[7])(void);
+
+----------------------------
+
+3A) 65591
+
+3B) 311353
+
+----------------------------
+
+4A) there is a circle of the links
+ln: failed to create symbolic link ‘zip’: File exists
+(the link count of alt-debug and xxdb should be 1)
+
+4B-1) henri and everyone else except the other staff members
+
+4B-2) staff members only except alphose
+
+----------------------------
+
+5A) not possible
+
+5B) 10.15.45.0 (non-routable network)
+      8.17.55.0 (network & subnet mask conflict)
+
+----------------------------
+
+6A) 2
+
+----------------------------
+
+Any assumptions you relied upon or questions you would have asked in an in person exam)
+3 A) 8KiB = 8192 bytes in page
+180279/8192 = 22.0067138672
+page 22
+offset: vir%pagesize = 180279%8192 = 55
+phy: frame*page size+offset = 8*8192+55 = 65591
+B) page: 172089/8192 = 21.0069580078 = 21
+offset: vir%pagesize = 172089%8192 = 57
+phy: 20*8192+57 = 163897
+page: 38
+38*8192 = 311296
+311296+offset=311296+57=311353
+
+4 A) 12:17 tar->zip size:8      12:19 arj->tar size:3  
+14:20 compress->arj size:3    23:18 zip->compress size:8
+
+6 A) three process in total 2 separate children parent close, two child left
