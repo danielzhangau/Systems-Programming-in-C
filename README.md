@@ -1,5 +1,5 @@
 # Systems Programming in C
-UQ CSSE2310 C
+UQ CSSE
 
 Systems Programming in C. Operating Systems Principles: memory management, basics of machine organization, file systems, processes & threads, interprocess communication. Computer Networks Principles: topologies & models of computer networks, protocols, network programming, network applications.
 
